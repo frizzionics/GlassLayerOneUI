@@ -1,0 +1,74 @@
+## Diagnosis
+- No problems found
+
+## Device
+App: 1.2.2 (6)
+Installed: 2026-11-20 14:42:51
+Device: samsung SM-A175F
+Android: 16 (API 36, BP4A.251205.006)
+ROM: BP4A.251205.006.A175FXXS7CZI4, patch 2026-09-05
+Fingerprint: samsung/a17xx/a17:16/BP4A.251205.006/A175FXXS7CZI4_OXM7CZI4:user/release-keys
+Framework: Vector 2.2 (3080) 88f8e1fa-JingMatrix-Vector (API 102)
+Scope: com.android.settings, com.android.systemui, com.google.android.packageinstaller
+
+## SystemUI
+SystemUI: 16 (36)
+Report time: 2026-11-20 16:03:31
+SystemUI uptime: 3880 s
+Module loaded: 2026-11-20 14:58:52 (APK updated 2026-11-20 14:42:51)
+Module APK loaded: /data/app/~~po4zq8WFDJ4e14I8yo9JFA==/com.drdisagree.glasslayer-fB_jDQdvUiRzanxRWQPhtg==/base.apk (installed: /data/app/~~po4zq8WFDJ4e14I8yo9JFA==/com.drdisagree.glasslayer-fB_jDQdvUiRzanxRWQPhtg==/base.apk)
+Hooked by: Vector 2.2
+Screen capture: true
+
+## Hooks
+ViewGlassUnderlay: 2
+DisplayRootTracker: 1
+WindowDimTracker: 2
+DozeTracker: 1
+ShadeGlass: 4
+QsTileGlass: 4
+QsFooterGlass: 7
+BrightnessGlass: 5
+MediaGlass: 3
+QsOpenMotion: 13
+NotificationGlass: 4
+LockscreenShortcutGlass: 6
+BouncerGlass: 9
+VolumeGlass: 7
+VolumePanelGlass: 11
+PowerMenuGlass: 4
+DialogGlass: 2
+ToastGlass: 2
+BackGestureGlass: 1
+StatusBarChipGlass: 3
+TransitionGlass: 3
+SwitchGlass: 5
+SliderGlass: 6
+ButtonGlass: 5
+
+## Log
+14:58:52.010 I Settings loaded from snapshot: 197 keys
+14:58:52.032 I ViewGlassUnderlay: 2 hooks
+14:58:52.036 I DisplayRootTracker: 1 hooks
+14:58:52.041 I WindowDimTracker: 2 hooks
+14:58:52.043 I DozeTracker: 1 hooks
+14:58:52.048 I ShadeGlass: 4 hooks
+14:58:52.053 I QsTileGlass: 4 hooks
+14:58:52.056 I QsFooterGlass: 7 hooks
+14:58:52.061 I BrightnessGlass: 5 hooks
+14:58:52.065 I MediaGlass: 3 hooks
+14:58:52.082 I QsOpenMotion: 13 hooks
+14:58:52.086 I NotificationGlass: 4 hooks
+14:58:52.090 I LockscreenShortcutGlass: 6 hooks
+14:58:52.098 I BouncerGlass: 9 hooks
+14:58:52.102 I VolumeGlass: 7 hooks
+14:58:52.107 I VolumePanelGlass: 11 hooks
+14:58:52.113 I PowerMenuGlass: 4 hooks
+14:58:52.115 I DialogGlass: 2 hooks
+14:58:52.117 I ToastGlass: 2 hooks
+14:58:52.118 I BackGestureGlass: 1 hooks
+14:58:52.119 I StatusBarChipGlass: 3 hooks
+14:58:52.122 I TransitionGlass: 3 hooks
+14:58:52.128 I SwitchGlass: 5 hooks
+14:58:52.131 I SliderGlass: 6 hooks
+14:58:52.135 I ButtonGlass: 5 hooks
