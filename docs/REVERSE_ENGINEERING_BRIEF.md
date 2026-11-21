@@ -6,7 +6,7 @@ One UI 8.5 (Android 16). GlassLayer is an LSPosed/Vector module that hooks 24 Sy
 surfaces to render live glass refraction. It was written against PixelOS/AOSP. We're
 adapting it for:
 
-- Device: Samsung Galaxy A17 5G, SM-A175F
+- Device: Samsung Galaxy A17 4G, SM-A175F
 - Build: BP4A.251205.006.A175FXXS7CZI4, One UI 8.5, Android 16 (API 36), patch 2026-09-05
 - Fingerprint: samsung/a17xx/a17:16/BP4A.251205.006/A175FXXS7CZI4_OXM7CZI4:user/release-keys
 
