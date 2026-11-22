@@ -39,6 +39,8 @@ object QsTileGlass {
     fun install(): Int {
         var hooks = 0
         hooks += HookEnv.findClass(TILE_KT).hookAll("TileExpandable") { chain ->
+            // TEMP DEBUG
+            HookEnv.log("ONEUI_DEBUG QsTileGlass: TileExpandable hook FIRED, method=${(chain.executable as? Method)?.name}")
             val state = ExpandableState()
             composing.addLast(state)
             try {
@@ -48,10 +50,14 @@ object QsTileGlass {
             }
         }
         hooks += HookEnv.findClass(EXPANDABLE_CONTROLLER_KT).hookMatchingAfter(Regex("rememberExpandableController.*")) { _, result ->
+            // TEMP DEBUG
+            HookEnv.log("ONEUI_DEBUG QsTileGlass: rememberExpandableController hook FIRED, result=${result != null}, composingDepth=${composing.size}")
             composing.lastOrNull()?.let { it.controller = result }
         }
 
         hooks += HookEnv.findClass(TILE_DEFAULTS).hookAllAfter("getColorForState") { chain, result ->
+            // TEMP DEBUG
+            HookEnv.log("ONEUI_DEBUG QsTileGlass: getColorForState hook FIRED")
             captureRecomposeScope(chain.executable as Method, chain.args)
             if (GlassConfig.tilesActive) applyGlassTileAlpha(chain.args.firstOrNull(), result)
         }
