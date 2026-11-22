@@ -1,5 +1,6 @@
 package com.drdisagree.glasslayer.xposed.systemui
 
+import android.graphics.Canvas
 import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
@@ -15,6 +16,7 @@ import com.drdisagree.glasslayer.xposed.hook.call
 import com.drdisagree.glasslayer.xposed.hook.field
 import com.drdisagree.glasslayer.xposed.hook.hookAll
 import com.drdisagree.glasslayer.xposed.hook.hookAllAfter
+import com.drdisagree.glasslayer.xposed.hook.hookAllBefore
 import com.drdisagree.glasslayer.xposed.hook.hookMatchingAfter
 import com.drdisagree.glasslayer.xposed.hook.proceedWithArgs
 import com.drdisagree.glasslayer.xposed.hook.setField
@@ -60,6 +62,16 @@ object QsTileGlass {
             HookEnv.log("ONEUI_DEBUG QsTileGlass: getColorForState hook FIRED")
             captureRecomposeScope(chain.executable as Method, chain.args)
             if (GlassConfig.tilesActive) applyGlassTileAlpha(chain.args.firstOrNull(), result)
+        }
+
+        // TEMP DEBUG — testing whether the legacy View-based tile system (found in the
+        // real APK survey: com.android.systemui.qs.tileimpl.*) is what's actually
+        // rendering tiles on this device, instead of the Compose TileKt path above.
+        for (legacyClass in listOf("LargeTileView", "NoLabelTileView", "LabelTileView")) {
+            hooks += HookEnv.findClass("${SystemUiModule.PACKAGE}.qs.tileimpl.$legacyClass").hookAllBefore("onDraw") { chain ->
+                HookEnv.log("ONEUI_DEBUG QsTileGlass: $legacyClass.onDraw FIRED")
+                (chain.args.firstOrNull() as? Canvas)?.drawColor(Color.MAGENTA)
+            }
         }
         return hooks
     }
