@@ -89,7 +89,16 @@ object QsTileGlass {
     }
 
     private fun drawTileGlass(drawScope: Any, shape: Any, state: ExpandableState) {
-        if (!GlassConfig.tilesActive || ExpandableTransitions.isTransitioning(state.controller)) return
+        // TEMP DEBUG — remove after diagnosing why QS tiles render stock on One UI 8.5.
+        HookEnv.log("ONEUI_DEBUG QsTileGlass.drawTileGlass CALLED, tilesActive=${GlassConfig.tilesActive}")
+        ComposeToolkit.nativeCanvas(drawScope)?.drawColor(Color.MAGENTA)
+        // END TEMP DEBUG — unconditional, runs even if the checks below would normally return.
+
+        if (!GlassConfig.tilesActive || ExpandableTransitions.isTransitioning(state.controller)) {
+            HookEnv.log("ONEUI_DEBUG QsTileGlass gated off: tilesActive=${GlassConfig.tilesActive} transitioning=${ExpandableTransitions.isTransitioning(state.controller)}")
+            return
+        }
+        HookEnv.log("ONEUI_DEBUG QsTileGlass past gate, entering Guard.run")
         Guard.run("QsTileGlass.tile_glass", Unit) {
             ComposeLiquidGlass.draw(
                 drawScope,
@@ -98,6 +107,7 @@ object QsTileGlass {
                 Color.TRANSPARENT,
                 GlassConfig.surface(PrefKeys.TILES).style
             )
+            HookEnv.log("ONEUI_DEBUG QsTileGlass.draw() returned without throwing")
         }
     }
 

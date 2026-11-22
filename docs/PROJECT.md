@@ -26,7 +26,7 @@ Samsung One UI 8.5 (Android 16).
   reference line numbers cited in FINDINGS.md. It is **not** the fork — don't commit to it.
 
 ## Device / confirmed facts
-- Samsung Galaxy A17 5G, SM-A175F. Rooted via KernelSU (jailbreak mode). Xposed
+- Samsung Galaxy A17 4G, SM-A175F. Rooted via KernelSU (jailbreak mode). Xposed
   framework in use: **Vector 2.2** (3080, API 102) — not LSPosed. LSPosed is listed as
   supported upstream but Vector is what's actually hooking on this device; don't assume
   LSPosed-only APIs are available.
