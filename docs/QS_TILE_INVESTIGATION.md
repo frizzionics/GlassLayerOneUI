@@ -183,6 +183,46 @@ this project uses Vector, not LSPosed — never separately verified whether Vect
 checking the Vector/libxposed API docs for any documented difference before writing
 more on-device tests.
 
+### 15. Targeted cross-reference sweep (not a full decompile) — found a parallel class hierarchy, then traced it back to the method already hooked
+Considered doing a full jadx decompile of the whole APK for easier searching. Decided
+against it: not necessary (a scoped bytecode scan gets the same answer), heavy on
+context/resources for a sandbox, and "rebuilding" an OEM SystemUI from decompiled
+source is a different, much bigger, impractical undertaking not needed for this project
+(the actual deliverable is a small patch to GlassLayer's own source, not a
+reconstruction of Samsung's app).
+
+Instead, scanned every method in the APK referencing `updateColoredBackground`,
+`QUICK_PANEL_BLUR_REFACTORING`, or `QUICK_PANEL_COMPOSE` (same technique as step 5's
+`TileExpandable` caller search). Found an entire parallel hierarchy not seen before:
+`com.android.systemui.qs.bar.{LargeTileBar, BrightnessBar, BrightnessVolumeBar,
+QuickControlBar, QSMediaPlayerBar, MultiSIMPreferredSlotBar, TileChunkLayoutBar}`,
+each extending `qs.bar.BarItemImpl` — a completely separate class tree from
+`qs.tileimpl.*`, with names ("Quick Control Bar", "Brightness Volume Bar") that sound
+like Samsung's actual distinctive One UI panel layout. Also found `QSFragmentLegacy`
+repeatedly checking `QUICK_PANEL_COMPOSE` — likely the fragment used specifically when
+Compose is off, versus `QSFragmentCompose` seen earlier in the manifest survey.
+
+Disassembled `LargeTileBar.updateColoredBackground()`: same `QUICK_PANEL_BLUR_REFACTORING`
+gate, then (if true) `mTiles.forEach(lambda)` plus separately walks a "cloned bar view"'s
+children. Disassembled the lambda (`LargeTileBar$$ExternalSyntheticLambda0.accept`):
+```
+tileView = tileRecord.tileView   // plugins.qs.QSTileView
+tileView.updateColoredBackground()
+```
+**This converges on the exact method already hooked in step 9/13** —
+`QSTileView.updateColoredBackground()`, which `LargeTileView` overrides. So the hook
+target in step 9 was structurally correct *within this call chain*, assuming the chain
+ever executes. This doesn't resolve the open question from step 12/14 — it raises the
+stakes on it: if `QUICK_PANEL_BLUR_REFACTORING` really is true, this entire 4-level
+chain should run and the step 13 test should have shown magenta. Since it didn't,
+either the flag is genuinely false (the `.sep`-based inference was wrong) or something
+upstream of `LargeTileBar.updateColoredBackground()` itself never gets called in
+practice (would need to find its own caller next, same technique).
+
+Commit `53880fa` (the direct `SEM_PLATFORM_INT` reflection read) has built successfully
+and is ready to test. That result is now the single most decisive thing to check before
+spending more effort on this chain.
+
 ## Commits in this investigation, in order
 `d134381` → `9e86c6a` → `8931ad2` (all in `app/src/main/java/com/drdisagree/glasslayer/xposed/systemui/QsTileGlass.kt`,
 all marked `TEMP DEBUG`, none are fixes, all should be reverted once the real
