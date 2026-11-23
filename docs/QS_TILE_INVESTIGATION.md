@@ -116,27 +116,72 @@ explained by the *same single runtime value*, not two unrelated bugs.
 something visible in static APK analysis. **This is the one open question left, and it
 doesn't need a build cycle to answer** — just reading a value off the running device.
 
-## Next action (cheap — not a build cycle)
-Get the actual `SEM_PLATFORM_INT` value from the device. Try, in order:
-```
-getprop | grep -i "sem_platform\|platform_int\|version.sem"
-```
-If nothing matches, a short Termux/root script reading
-`android.os.Build.VERSION.SEM_PLATFORM_INT` directly (via `app_process`/a tiny helper)
-would be the fallback — ask before building this if getprop comes up empty.
+### 11. `getprop ro.build.version.sem` (wrong property, caught before acting on it)
+Returned `3602` — same small magnitude as a documented *different* Samsung property
+(`ro.build.version.sem`, a minor firmware counter) seen on a real device dump, not
+`SEM_PLATFORM_INT`. Did not act on this value.
 
-If confirmed `<= 170000`: next step is finding what method *does* set the tile
-background when `QUICK_PANEL_BLUR_REFACTORING` is false — likely the `else`-equivalent
-of whatever called `updateColoredBackground`, or a different, older method entirely.
-Check this statically (search for other code paths branching on the same flag, or
-search `LargeTileView`/`ColoredBGHelper` for a second background-setting method) before
-writing another on-device test.
+### 12. `getprop ro.build.version.sep` (right magnitude, still indirect evidence)
+Returned `170500`. Formula derived from known real values (`ro.build.version.sep=130100`
+on a documented One UI 4.1 device, pattern `90000 + major*10000 + minor*100`) predicts
+exactly `170500` for One UI 8.5 — strong match, **but this is still inferring that `.sep`
+backs `SEM_PLATFORM_INT`, not confirming it.** `170500 > 170000`, which would mean
+`QUICK_PANEL_COMPOSE` and `QUICK_PANEL_BLUR_REFACTORING` are **true** — directly
+contradicting every negative on-device result so far (step 3 and step 9). Hypothesis
+from steps 1-10 does not survive this check as stated.
 
-If `SEM_PLATFORM_INT` actually is `> 170000` (hypothesis wrong): back to genuinely not
-knowing why 3 different, well-evidenced hook targets have all been silent — would need
-to reconsider from scratch, likely worth getting a fresh hook-diagnostics report
-(`docs/device/`) to compare against the first one, since the device's state has changed
-a lot since that export.
+### 13. On-device test — `updateColoredBackground` + `setBackgroundColor(MAGENTA)` (commit `8931ad2`)
+Result: **still nothing.** Same as every prior attempt on this surface.
+
+### 14. Static manifest check — ruled out separate-process theory
+Parsed the real `AndroidManifest.xml` from `systemui_oneui85.apk`. Every QS/panel/tile
+related component (`QSOnboardingActivity`, `PanelSettingsLaunchActivity`,
+`VolumePanelDialogReceiver`, `QSBackupRestoreManager$QSBnRReceiver`, etc.) declares no
+`android:process` override — all run in the default `com.android.systemui` process,
+same as everything GlassLayer hooks. The only separate processes in this APK are
+unrelated (`:edgelighting`, `:tuner`, `:screenshot`, `:appclips.screenshot`,
+`:coverlauncher`, `:multiwindowui`, `:fgservices`, `:sweetsweetdesserts`). **Ruled out:**
+GlassLayer hooking the wrong process is not why these hooks are silent.
+
+## Current state: leading theory from steps 1-10 is contradicted by step 12, not confirmed
+Nothing so far definitively explains why 4 independently-evidenced hook targets across
+2 completely different rendering systems (Compose `TileKt`/`TileDefaults`, legacy View
+`LargeTileView.updateColoredBackground`) are all silent, despite:
+- hooks confirmed installing (report.txt, nonzero counts)
+- target classes confirmed present with matching signatures (static bytecode)
+- target classes confirmed as the real factory output (`QSPanelHost.createTileView`
+  directly constructs them)
+- the process confirmed correct (manifest check, step 14)
+
+The one thing not yet eliminated: **whether `ro.build.version.sep` is actually what
+`Build.VERSION.SEM_PLATFORM_INT` reads from.** This was always an inference from a
+different device's property dump, never confirmed for this exact field on this exact
+device.
+
+## Next action — commit `<pending>`, not yet tested
+Added a direct reflection read, right at the top of `QsTileGlass.install()`, of:
+- `android.os.Build.VERSION.SEM_PLATFORM_INT` (the actual field, not an inferred
+  property name)
+- `QpRune.QUICK_PANEL_COMPOSE` and `QpRune.QUICK_PANEL_BLUR_REFACTORING` (the actual
+  resolved flag values in the running process, not inferred from `<clinit>` bytecode)
+
+This removes all ambiguity in one log line. Build, install, reboot, open Quick Settings
+once (not required for this specific log line, but needed for the other checkpoints
+already in place), check Vector's log for the `ONEUI_DEBUG ... SEM_PLATFORM_INT=...`
+line emitted at module-install time.
+
+**If `SEM_PLATFORM_INT` is actually `<= 170000`** (meaning `.sep` was a bad proxy after
+all): the original theory (steps 1-10) holds — next step is finding what method sets
+the tile background when `QUICK_PANEL_BLUR_REFACTORING` is false, via static search for
+another branch on that same flag.
+
+**If `SEM_PLATFORM_INT` is confirmed `> 170000`** (matching step 12's inference): the
+flags are genuinely on, and something else entirely is wrong — possibly something about
+*how* GlassLayer's reflection-based hooking interacts with Vector specifically (recall:
+this project uses Vector, not LSPosed — never separately verified whether Vector's
+`hookAll`/`hookAllAfter` behave identically to LSPosed's for these call sites). Worth
+checking the Vector/libxposed API docs for any documented difference before writing
+more on-device tests.
 
 ## Commits in this investigation, in order
 `d134381` → `9e86c6a` → `8931ad2` (all in `app/src/main/java/com/drdisagree/glasslayer/xposed/systemui/QsTileGlass.kt`,

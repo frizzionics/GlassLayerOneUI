@@ -37,6 +37,19 @@ object QsTileGlass {
     private val composing = ArrayDeque<ExpandableState>()
 
     fun install(): Int {
+        // TEMP DEBUG — read the authoritative values directly via reflection instead of
+        // inferring SEM_PLATFORM_INT from a guessed system property name. This removes
+        // all ambiguity: these are the exact values the running process actually uses.
+        try {
+            val semPlatformInt = android.os.Build.VERSION::class.java.getField("SEM_PLATFORM_INT").getInt(null)
+            val qpRune = HookEnv.findClass("${SystemUiModule.PACKAGE}.QpRune")
+            val compose = qpRune?.getField("QUICK_PANEL_COMPOSE")?.getBoolean(null)
+            val blurRefactor = qpRune?.getField("QUICK_PANEL_BLUR_REFACTORING")?.getBoolean(null)
+            HookEnv.log("ONEUI_DEBUG QsTileGlass: SEM_PLATFORM_INT=$semPlatformInt QUICK_PANEL_COMPOSE=$compose QUICK_PANEL_BLUR_REFACTORING=$blurRefactor")
+        } catch (t: Throwable) {
+            HookEnv.log("ONEUI_DEBUG QsTileGlass: failed to read SEM_PLATFORM_INT/QpRune flags directly", t)
+        }
+
         var hooks = 0
         hooks += HookEnv.findClass(TILE_KT).hookAll("TileExpandable") { chain ->
             // TEMP DEBUG
