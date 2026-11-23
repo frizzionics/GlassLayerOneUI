@@ -48,22 +48,27 @@ Samsung One UI 8.5 (Android 16).
   on-screen check can answer.
 
 ## Current action item (blocking next real step)
-Hooks attaching ≠ confirmed-correct visuals. Before writing any Samsung-specific code,
-need a live check on-device:
-1. Open GlassLayer's app, go to the per-surface toggles, and make sure **QS background,
-   QS tiles, QS footer, and brightness slider** are switched on (confirm they weren't
-   already on when the original quick-panel screenshot was taken — that screenshot
-   didn't show obvious refraction, so either they were off, or something's rendering
-   wrong despite the hook attaching).
-2. Open Quick Settings on the phone and look closely: is there visible refraction/blur
-   distortion on the panel background, tiles, and footer — or does it look identical to
-   stock One UI (meaning the hook attached but isn't visually doing anything), or does
-   it look broken (wrong shape, clipped, flickering)?
-3. A fresh screenshot of Quick Settings with those toggles on is the fastest way to
-   settle this.
+**See `docs/QS_TILE_INVESTIGATION.md` for the full log — read that before touching
+`QsTileGlass.kt` again.** Short version: QS tiles confirmed visually stock through
+several rounds of on-device testing (each one logged with commit hash and what it
+proved/disproved). Strong static evidence now points to a single runtime flag,
+`Build.VERSION.SEM_PLATFORM_INT`, being `<= 170000` on this device — which would
+disable both the Compose tile system and the legacy View system's real background-
+setting code at once, explaining every silent result so far. **Next action is cheap: a
+`getprop` check on the device, not another build cycle** — see the investigation log's
+"Next action" section for the exact command and what to do with either outcome.
 
-Until that's answered, there's nothing concrete to patch — writing Samsung-specific
-hook code for a surface that might already work would be wasted effort.
+Notifications remains confirmed working and untouched — don't re-investigate it.
+
+## Process lesson from this investigation (apply going forward)
+Several rounds of "add a debug hook, build via CI, wait, install, reboot, test" were
+spent on questions actually answerable by direct static analysis of the APK's bytecode
+(does anything call this method at all; is this method even declared on this class) in
+seconds, with no device involvement. Lead with static analysis — call-graph/reference
+scans, method/field listings, disassembly of specific methods — before writing another
+on-device diagnostic. Reserve actual device round-trips for things that genuinely can't
+be determined from the APK alone (a runtime property value, whether a shader renders
+correctly, real user-visible behavior).
 
 ## What's still needed from the user
 1. ✅ ~~Fork~~ — done (`frizzionics/GlassLayerOneUI`).
