@@ -219,9 +219,76 @@ either the flag is genuinely false (the `.sep`-based inference was wrong) or som
 upstream of `LargeTileBar.updateColoredBackground()` itself never gets called in
 practice (would need to find its own caller next, same technique).
 
-Commit `53880fa` (the direct `SEM_PLATFORM_INT` reflection read) has built successfully
-and is ready to test. That result is now the single most decisive thing to check before
-spending more effort on this chain.
+### 16. Confirmed via direct reflection (commit `53880fa`, tested): `SEM_PLATFORM_INT=170500`, `QUICK_PANEL_COMPOSE=true`, `QUICK_PANEL_BLUR_REFACTORING=true`
+The `.sep`-based inference was correct. Both flags are genuinely on. This fully
+resolves step 12's open question — but does not explain the silence, since both
+code paths should now be active.
+
+**Bigger finding from this same report:** `QsTileGlass: 7` hooks installed (up from 4,
+confirming the 3 new `updateColoredBackground` hooks attached correctly) — but **not
+one** of the 4 instrumented hook-firing checkpoints logged anything, across the entire
+~4-minute SystemUI session. Only the unconditional install-time `SEM_PLATFORM_INT` log
+appears. Zero firing evidence across `TileExpandable`, `rememberExpandableController`,
+`getColorForState`, and all 3 `updateColoredBackground` hooks, despite flags confirming
+this code should run. Asked the user to confirm Quick Settings was actually opened
+during the test session — not yet confirmed either way.
+
+### 17. Traced `LargeTileBar.updateColoredBackground`'s own caller — found it's a rare path, not the main render path
+Only 2 callers, both `getClonedBarView()` on subclasses (`BottomLargeTileBar`,
+`SmartViewLargeTileBar`) — a special-purpose "cloned bar view" construction, not normal
+rendering. This explains step 9/13's silence by itself, no exotic hooking-mechanism
+theory needed: the hook was aimed at code that doesn't run during ordinary use.
+
+### 18. Traced the interface-level `QSTileView.updateColoredBackground` — found the real "else" branch
+Only 3 call sites total in the whole APK: `LargeTileBar.addTile`, and two branches of a
+single merged/deduplicated lambda (`LargeTileBar$$ExternalSyntheticLambda1`, R8-merged
+with a `$r8$classId` switch dispatching between several behaviors). Disassembled the
+relevant branch:
+```
+addView(tileView)
+if (QUICK_PANEL_BLUR_REFACTORING)
+    tileView.updateColoredBackground()
+else
+    mBGColorHelper.addBarBackground(tileView, false)
+```
+This **confirms** the flag genuinely branches between two real, different
+implementations — not a dead/no-op guard. Since the flag is confirmed true (step 16),
+`updateColoredBackground()` should be the one running.
+
+This lambda gets constructed in 4 places: `LargeTileBar.inflateViews`,
+`removeAllTiles` (×2 overloads), `setListening`. `inflateViews` is the most likely
+candidate for the real, normal view-construction path.
+
+### 19. Checked for overrides before hooking (learned from round 2's onDraw mistake)
+`inflateViews` is declared on `LargeTileBar` itself, but **also independently overridden**
+by `BottomLargeTileBar` and `SmartViewLargeTileBar` (not calling through a shared base -
+each declares its own). Only `TopLargeTileBar` relies on the base implementation.
+Hooking just `LargeTileBar` would have silently missed the other two, same mistake as
+round 2's `onDraw` attempt. Hooked all 4 classes' own `inflateViews` declarations this
+time (harmless no-op on `TopLargeTileBar`, which has none of its own — covered via the
+base class hook instead, same inheritance-covers-it logic that's safe here).
+
+## Next action — commit `<pending>`, not yet tested
+Hooks `inflateViews` (entry + exit, with `System.currentTimeMillis()`) on all 4 bar
+classes. This is now a well-traced, high-confidence target: real method (not a lambda),
+confirmed not overridden-and-missed, confirmed to be the thing that constructs the
+lambda containing the actual `updateColoredBackground()` call.
+
+**If this fires:** confirms view construction runs as expected; the mystery narrows to
+why `updateColoredBackground()` itself still doesn't log even when called from here -
+worth hooking the lambda itself directly at that point, or checking if `QUICK_PANEL_BLUR_REFACTORING`'s
+value could differ between class-load time (when our `SEM_PLATFORM_INT` log ran) and
+whenever `inflateViews` actually executes (unlikely for a value tied to a static final-ish
+flag, but not yet ruled out).
+
+**If this does NOT fire either:** the view construction method itself never runs during
+this session, which would suggest either (a) it ran once, before boot, in a way that
+doesn't apply per-session (unlikely for a view-construction method, these usually run
+per-instance not once-globally), or (b) something more fundamental about hook timing -
+worth checking whether GlassLayer's hooks install early enough relative to SystemUI's
+own early boot-time initialization, since this is exactly the kind of one-time
+construction code that could plausibly run before a module has finished attaching all
+its hooks, depending on exactly when in SystemUI's boot sequence Vector injects.
 
 ## Commits in this investigation, in order
 `d134381` → `9e86c6a` → `8931ad2` (all in `app/src/main/java/com/drdisagree/glasslayer/xposed/systemui/QsTileGlass.kt`,

@@ -87,6 +87,29 @@ object QsTileGlass {
                 (chain.thisObject as? android.view.View)?.setBackgroundColor(Color.MAGENTA)
             }
         }
+
+        // TEMP DEBUG round 3 — traced the real call chain: updateColoredBackground is only
+        // invoked from inside LargeTileBar$$ExternalSyntheticLambda1.accept, constructed in
+        // 4 places (inflateViews, removeAllTiles x2, setListening). inflateViews is the one
+        // that sounds like real view construction, not a rare edit-mode path like the
+        // cloned-bar-view call chain from round 2. Hooking the real method directly (not the
+        // lambda) to see if it's ever called at all, and whether it's called before or after
+        // this module's hooks are installed (logs both entry and exit with a timestamp-ish
+        // marker via System.currentTimeMillis so we can compare against module-load time in
+        // the exported report).
+        // LargeTileBar declares inflateViews, but BottomLargeTileBar and SmartViewLargeTileBar
+        // override it independently rather than calling through the base - checked statically
+        // first this time rather than assuming, after missing exactly this kind of thing with
+        // onDraw in round 2. TopLargeTileBar does not override it (uses the base directly).
+        for (barClass in listOf("LargeTileBar", "TopLargeTileBar", "BottomLargeTileBar", "SmartViewLargeTileBar")) {
+            val cls = HookEnv.findClass("${SystemUiModule.PACKAGE}.qs.bar.$barClass")
+            hooks += cls.hookAllBefore("inflateViews") { chain ->
+                HookEnv.log("ONEUI_DEBUG QsTileGlass: $barClass.inflateViews ENTER at ${System.currentTimeMillis()}, class=${chain.thisObject?.javaClass?.name}")
+            }
+            hooks += cls.hookAllAfter("inflateViews") { chain, _ ->
+                HookEnv.log("ONEUI_DEBUG QsTileGlass: $barClass.inflateViews EXIT at ${System.currentTimeMillis()}")
+            }
+        }
         return hooks
     }
 
