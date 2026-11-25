@@ -15,6 +15,7 @@ import com.drdisagree.glasslayer.xposed.hook.call
 import com.drdisagree.glasslayer.xposed.hook.field
 import com.drdisagree.glasslayer.xposed.hook.hookAll
 import com.drdisagree.glasslayer.xposed.hook.hookAllAfter
+import com.drdisagree.glasslayer.xposed.hook.hookAllBefore
 import com.drdisagree.glasslayer.xposed.hook.hookMatchingAfter
 import com.drdisagree.glasslayer.xposed.hook.proceedWithArgs
 import com.drdisagree.glasslayer.xposed.hook.setField
