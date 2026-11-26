@@ -31,6 +31,7 @@ object QsTileGlass {
     private const val STATE_ACTIVE = 2
     private const val RGB_MASK = 0x00FFFFFF
     private const val EXPANDABLE_CONTROLLER_KT = "com.android.compose.animation.ExpandableControllerKt"
+    private const val SAMSUNG_QUICKSETTING_PACKAGE = "${SystemUiModule.PACKAGE}.samsung.quicksetting"
 
     private val tileModifierToOriginal = WeakHashMap<Any, Any>()
     private val recomposeScopes = Collections.newSetFromMap(WeakHashMap<Any, Boolean>())
@@ -111,6 +112,17 @@ object QsTileGlass {
                 HookEnv.log("ONEUI_DEBUG QsTileGlass: $barClass.inflateViews EXIT at ${System.currentTimeMillis()}")
             }
         }
+
+        // ROUND 4 — real target found via systemui.log evidence of SecQSPanelComposeAdapter
+        // plus a full survey of com.android.systemui.samsung.quicksetting (2333 classes,
+        // Samsung's own from-scratch Compose QS reimplementation, superseding everything
+        // hooked in rounds 1-3). QuickTile has a Modifier param (index 1 by signature) but
+        // no Shape param - it builds its own RoundedCornerShape internally. Using
+        // ComposeToolkit.circleShape as a stand-in shape for this first test: close enough
+        // to prove the mechanism, not meant to be pixel-accurate yet.
+        hooks += HookEnv.findClass("${SAMSUNG_QUICKSETTING_PACKAGE}.ui.tiles.QuickTileKt").hookAll("QuickTile") { chain ->
+            chain.proceedWithArgs { args -> applySamsungQuickTile(chain.executable as Method, args) }
+        }
         return hooks
     }
 
@@ -141,6 +153,48 @@ object QsTileGlass {
         ComposeModifiers.drawBehind(original, drawer)?.let {
             tileModifierToOriginal[it] = original
             args[modifierIndex] = it
+        }
+    }
+
+    private fun applySamsungQuickTile(method: Method, args: Array<Any?>) {
+        val types = method.parameterTypes
+        val modifierIndex = types.indexOfFirst { it.name == ComposeToolkit.MODIFIER_CLASS }
+        if (modifierIndex == -1) return
+
+        val modifier = args[modifierIndex] ?: return
+        val original = tileModifierToOriginal[modifier] ?: modifier
+        args[modifierIndex] = original
+        if (!GlassConfig.tilesActive) return
+
+        // No Shape param on this composable (it builds its own RoundedCornerShape
+        // internally) - using the generic reflective CircleShape as a stand-in for
+        // this first test. Not pixel-accurate to Samsung's actual corner radius yet;
+        // that's a refinement for once the mechanism itself is confirmed working.
+        val shape = ComposeToolkit.circleShape ?: return
+        val drawer = ComposeModifiers.proxy("QsTileGlass.samsungDraw") { drawScope -> drawSamsungQuickTile(drawScope, shape) } ?: return
+        ComposeModifiers.drawBehind(original, drawer)?.let {
+            tileModifierToOriginal[it] = original
+            args[modifierIndex] = it
+        }
+    }
+
+    private fun drawSamsungQuickTile(drawScope: Any, shape: Any) {
+        // TEMP DEBUG — first test of this hook target, same unconditional-signal approach
+        // as every previous first attempt in this investigation (see QS_TILE_INVESTIGATION.md).
+        HookEnv.log("ONEUI_DEBUG QsTileGlass: samsung QuickTile drawn CALLED, tilesActive=${GlassConfig.tilesActive}")
+        ComposeToolkit.nativeCanvas(drawScope)?.drawColor(Color.MAGENTA)
+        // END TEMP DEBUG
+
+        if (!GlassConfig.tilesActive) return
+        Guard.run("QsTileGlass.samsung_quick_tile", Unit) {
+            ComposeLiquidGlass.draw(
+                drawScope,
+                shape,
+                GlassConfig.surface(PrefKeys.TILES).blurRadiusPx,
+                Color.TRANSPARENT,
+                GlassConfig.surface(PrefKeys.TILES).style
+            )
+            HookEnv.log("ONEUI_DEBUG QsTileGlass: samsung QuickTile ComposeLiquidGlass.draw() returned without throwing")
         }
     }
 
