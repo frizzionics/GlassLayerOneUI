@@ -290,6 +290,66 @@ own early boot-time initialization, since this is exactly the kind of one-time
 construction code that could plausibly run before a module has finished attaching all
 its hooks, depending on exactly when in SystemUI's boot sequence Vector injects.
 
+### 20. Result (commit `efec761`, tested, first attempt build-failed on `e0b4b6f` due to a
+missing `hookAllBefore` import - self-inflicted, fixed, rebuilt): `inflateViews` ENTER/EXIT
+never logged either, 6/6 hooks silent, same as every round before it.
+
+Report confirms: `QsTileGlass: 13` hooks (7 + 6 new, exactly matching the 3 classes that
+actually declare `inflateViews` × 2), `SEM_PLATFORM_INT=170500` confirmed again, "No
+problems found." **Only the one unconditional install-time log line appears, same as
+every previous round.**
+
+Checked the session's `systemui.log` directly for proof Quick Settings was actually
+opened (the obvious cheap explanation to rule out first) - confirmed genuine panel
+expansion: `SecQSPanelComposeAdapter: setSlideFraction - 1.0`, `isPanelExpanded = true`,
+`SecQSDetailController: onPanelExpansionStateChanged`. QS was opened correctly. This
+round's silence is real.
+
+### 21. MAJOR FINDING — an entire independent, 2333-class Samsung reimplementation of Quick Settings exists, likely superseding everything investigated in steps 1-20
+
+The same `systemui.log` that confirmed QS opened also surfaced a class never seen in
+any prior static search: `SecQSPanelComposeAdapter`
+(`com.android.systemui.samsung.quicksetting`). Surveyed that entire package: **2333
+classes**, a complete, self-contained Compose-based Quick Settings implementation —
+own tile grid (`SpannableGridKt`, `SpannableGridTileKt`, `QuickSettingTileGridKt`), own
+data model (`GridTileData`, `TileData`, `QSPanelItem`), own view models
+(`QuickSettingSceneViewModel`, `QuickTileBoxViewModel`), own repositories/interactors
+(`GridTileRepositoryImpl`, `GridTileInteractor`, `PreferenceDataSourceImpl`), own
+bar-with-tile composables with names strikingly similar to the `qs.bar.*` hierarchy
+investigated in steps 4-19 (`BrightBarWithTileKt`, `VolumeBarWithTileKt`,
+`MultiSIMPreferredBarKt` vs. the older `qs.bar.BrightnessBar`, `qs.bar.VolumeBar`,
+`qs.bar.MultiSIMPreferredSlotBar`) - strongly suggesting the `qs.bar.*` hierarchy is
+*also* legacy/superseded code, not just AOSP's `TileKt`.
+
+**This would mean every hook target investigated in this entire file - `TileKt`,
+`TileDefaults`, `qs.tileimpl.*`, `qs.bar.*` - was aimed at inactive code on this device,
+not because any individual theory was wrong in isolation, but because none of them
+were looking at Samsung's actual from-scratch reimplementation.** Each prior round's
+careful, correct-seeming targeting (confirmed signatures, confirmed call chains,
+confirmed flag states) still produced silence because the real renderer lives somewhere
+none of those searches touched.
+
+Checked the standout candidate: `samsung.quicksetting.ui.tiles.QuickTileKt.QuickTile`:
+```
+QuickTile(SpannableGridTileScope, Modifier, QuickTile[data model], Boolean, Boolean,
+Boolean, Boolean, Composer, Int, Int)
+```
+Has a `Modifier` parameter (index 1) - same injectable shape as `TileExpandable`. 11
+callers, including `SpannableGridTileKt` (the real grid container) and
+`BrightBarWithTileKt`/`VolumeBarWithTileKt` (echoing the bar-with-tile naming pattern
+above). This looks like the actual, live per-tile composable - richly used, reached
+from what's clearly the real grid, not a legacy/parallel path.
+
+**Not yet done:** confirming `QuickTile`'s Shape-equivalent parameter (if any - may not
+need one, could derive shape from its own internal state given this is a from-scratch
+Samsung composable, not a direct AOSP counterpart), finding what sits inside its body to
+know where to inject a glass-drawing modifier, and writing an actual hook against it -
+this would be new, non-AOSP-mirroring code, unlike every hook written so far which
+adapted an existing GlassLayer hook pattern onto a different class in the same shape.
+Next session should start here, not re-survey `qs.tileimpl`/`qs.bar` - those are very
+likely dead ends now, 4 rounds of on-device evidence plus this naming correspondence
+both pointing the same way.
+
 ## Commits in this investigation, in order
 `d134381` → `9e86c6a` → `8931ad2` (all in `app/src/main/java/com/drdisagree/glasslayer/xposed/systemui/QsTileGlass.kt`,
 all marked `TEMP DEBUG`, none are fixes, all should be reverted once the real
