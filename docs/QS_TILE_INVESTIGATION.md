@@ -350,6 +350,78 @@ Next session should start here, not re-survey `qs.tileimpl`/`qs.bar` - those are
 likely dead ends now, 4 rounds of on-device evidence plus this naming correspondence
 both pointing the same way.
 
+### 22. Round 4 result (commit `c463dc1`, tested): hook on `samsung.quicksetting.QuickTile` installed (`QsTileGlass: 14`, +1 as expected) — still zero firing, same as every round before it.
+
+## STEPPING BACK — read this section first in any new session
+
+Five independently-verified, carefully-targeted hooks, across **four different**
+rendering systems, have now all produced the identical result (install succeeds,
+zero firing, zero visual change):
+1. `TileKt.TileExpandable` (AOSP Compose) - step 3
+2. `qs.tileimpl.{LargeTileView,...}.updateColoredBackground` (AOSP legacy View, traced
+   through a confirmed-real call chain) - step 9/13
+3. `LargeTileBar.inflateViews` (Samsung's `qs.bar` hierarchy) - step 19/20
+4. `samsung.quicksetting.QuickTile` (Samsung's own ground-up Compose reimplementation,
+   the most well-evidenced target found in this entire investigation - step 21/22)
+
+Meanwhile `NotificationGlass.onDraw` on `NotificationBackgroundView` is confirmed
+working, visually, from the very start of this project. That hook is structurally the
+same *kind* of thing as #2 and #3 above (a plain virtual method hook via
+`hookAllBefore`/`hookAllAfter` on an ordinary View subclass, no Compose involved) - so
+this is no longer plausibly a "wrong class" problem on its fourth distinct hierarchy.
+Something that differs between the notification-rendering path and *every* QS-related
+path, regardless of which underlying system renders QS, is the real question now.
+
+### Leading reframe: the exported report may not describe the process that renders the screen
+`HookReporter` (`xposed/report/HookReporter.kt`) is a plain Kotlin `object` - per-process
+static state, not shared across processes. `xposed.log` already confirmed GlassLayer
+loads into at least 3 processes: main `com.android.systemui`, `:edgelighting`, and a
+third process under a different UID entirely (10078, identity not yet determined).
+`install()` runs identically in every process (same APK, same reflection lookups), so
+**every process would report the same hook counts regardless of whether it ever
+actually renders anything** - meaning the report's hook-count numbers (consistently
+matching expected increments every round) tell us nothing about *which* process's data
+we're actually looking at, only that install succeeded *somewhere*.
+
+**What this does explain:** why we've never seen a single corroborating `ONEUI_DEBUG`
+firing-log, across 5 different hooked targets, if the report we keep exporting happens
+to reflect a background/non-UI process (`:edgelighting` or the UID-10078 one) rather
+than the main process that actually composes and draws Quick Settings.
+
+**What this does NOT explain by itself:** the visual absence. If the *main* process's
+own copy of these hooks is genuinely firing (since that's the process actually drawing
+the screen), magenta should appear regardless of which process's log happens to get
+exported. So this reframes the open question rather than closing it: **is the main,
+screen-rendering process's install of these hooks actually firing, independent of
+whatever the report shows?** The report can't answer this if it's reading from the
+wrong process.
+
+### Recommended next action for a new session
+Don't try a sixth hook target yet - the pattern across 4 systems suggests the problem
+isn't "which class," so another retarget is unlikely to be more informative than #1-4
+already were. Instead, something that can distinguish *which process is doing real UI
+work* would be far more informative:
+- Hook something guaranteed to run once-per-frame specifically in whatever process is
+  actually performing window traversal/drawing for the Quick Settings window (e.g.
+  something in `ViewRootImpl.performTraversals` or similar), logging the PID/process
+  name each time, and cross-reference that against where `QsTileGlass`'s install()
+  actually ran with matching hook counts. This directly tests the multi-process
+  hypothesis rather than assuming it.
+- Alternatively: read more of `HookReporter.send()` / however the app's UI
+  (`MainActivity`/`StatusScreen`) requests and receives this data across processes -
+  if multiple processes each respond to a single "send me your report" broadcast, the
+  receiving side's handling of multiple responses (does it take the first, the last, or
+  correctly multiplex by process?) would settle this without any new on-device test.
+- Simpler experiment, if available: disable the Edge Lighting feature (or whatever
+  triggers the `:edgelighting` process) before testing, to eliminate one of the
+  candidate processes and see if report data / behavior changes at all.
+
+### Session note
+This investigation has now run 4 full rounds (including one self-inflicted build
+failure from a missing import, caught and fixed before wasting a device round-trip -
+see commit `efec761`). Everything is committed and pushed; a new session can start
+directly from "STEPPING BACK" above without re-deriving anything in steps 1-22.
+
 ## Commits in this investigation, in order
 `d134381` → `9e86c6a` → `8931ad2` (all in `app/src/main/java/com/drdisagree/glasslayer/xposed/systemui/QsTileGlass.kt`,
 all marked `TEMP DEBUG`, none are fixes, all should be reverted once the real

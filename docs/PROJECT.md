@@ -48,15 +48,20 @@ Samsung One UI 8.5 (Android 16).
   on-screen check can answer.
 
 ## Current action item (blocking next real step)
-**See `docs/QS_TILE_INVESTIGATION.md` for the full log — read that before touching
-`QsTileGlass.kt` again.** Short version: QS tiles confirmed visually stock through
-several rounds of on-device testing (each one logged with commit hash and what it
-proved/disproved). Strong static evidence now points to a single runtime flag,
-`Build.VERSION.SEM_PLATFORM_INT`, being `<= 170000` on this device — which would
-disable both the Compose tile system and the legacy View system's real background-
-setting code at once, explaining every silent result so far. **Next action is cheap: a
-`getprop` check on the device, not another build cycle** — see the investigation log's
-"Next action" section for the exact command and what to do with either outcome.
+**See `docs/QS_TILE_INVESTIGATION.md`, specifically the "STEPPING BACK" section near the
+end — read that before touching `QsTileGlass.kt` again.** Short version: 4 full rounds
+of on-device testing across 4 completely different rendering systems (AOSP Compose,
+AOSP legacy View, Samsung's `qs.bar`, Samsung's own from-scratch `samsung.quicksetting`
+reimplementation - the best-evidenced target found) have all produced the identical
+result: hook installs correctly, zero firing, zero visual change. This is very unlikely
+to still be a "wrong class" problem on its fourth distinct hierarchy.
+
+Leading open question now: `HookReporter` is per-process state, and GlassLayer loads
+into at least 3 processes (main `com.android.systemui`, `:edgelighting`, one more under
+a different UID). The report we keep exporting may not be describing the process that
+actually renders the screen. See the investigation log for what this does and doesn't
+explain, and the recommended next action (determine which process does real UI work,
+rather than trying a sixth hook target blind).
 
 Notifications remains confirmed working and untouched — don't re-investigate it.
 
