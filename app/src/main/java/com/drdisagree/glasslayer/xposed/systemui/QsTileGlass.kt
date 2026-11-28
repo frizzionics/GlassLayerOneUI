@@ -33,6 +33,25 @@ object QsTileGlass {
     private const val EXPANDABLE_CONTROLLER_KT = "com.android.compose.animation.ExpandableControllerKt"
     private const val SAMSUNG_QUICKSETTING_PACKAGE = "${SystemUiModule.PACKAGE}.samsung.quicksetting"
 
+    // TEMP DEBUG — HookReporter.send() carries no process identification at all (every
+    // process GlassLayer loads into broadcasts its own report indistinguishably), and
+    // xposed.log confirms GlassLayer loads into 3+ processes (main systemui, :edgelighting,
+    // one more under a different UID). Every debug log call in this file goes through
+    // dbg() instead of HookEnv.log() directly so we can finally tell, from the exported
+    // report alone, which process actually produced a given line.
+    private val processTag: String by lazy {
+        val name = try {
+            android.app.Application.getProcessName() ?: "?"
+        } catch (_: Throwable) {
+            "?"
+        }
+        "$name/${android.os.Process.myPid()}"
+    }
+
+    private fun dbg(msg: String, throwable: Throwable? = null) {
+        HookEnv.log("ONEUI_DEBUG [$processTag] $msg", throwable)
+    }
+
     private val tileModifierToOriginal = WeakHashMap<Any, Any>()
     private val recomposeScopes = Collections.newSetFromMap(WeakHashMap<Any, Boolean>())
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -47,15 +66,15 @@ object QsTileGlass {
             val qpRune = HookEnv.findClass("${SystemUiModule.PACKAGE}.QpRune")
             val compose = qpRune?.getField("QUICK_PANEL_COMPOSE")?.getBoolean(null)
             val blurRefactor = qpRune?.getField("QUICK_PANEL_BLUR_REFACTORING")?.getBoolean(null)
-            HookEnv.log("ONEUI_DEBUG QsTileGlass: SEM_PLATFORM_INT=$semPlatformInt QUICK_PANEL_COMPOSE=$compose QUICK_PANEL_BLUR_REFACTORING=$blurRefactor")
+            dbg("QsTileGlass: SEM_PLATFORM_INT=$semPlatformInt QUICK_PANEL_COMPOSE=$compose QUICK_PANEL_BLUR_REFACTORING=$blurRefactor")
         } catch (t: Throwable) {
-            HookEnv.log("ONEUI_DEBUG QsTileGlass: failed to read SEM_PLATFORM_INT/QpRune flags directly", t)
+            dbg("QsTileGlass: failed to read SEM_PLATFORM_INT/QpRune flags directly", t)
         }
 
         var hooks = 0
         hooks += HookEnv.findClass(TILE_KT).hookAll("TileExpandable") { chain ->
             // TEMP DEBUG
-            HookEnv.log("ONEUI_DEBUG QsTileGlass: TileExpandable hook FIRED, method=${(chain.executable as? Method)?.name}")
+            dbg("QsTileGlass: TileExpandable hook FIRED, method=${(chain.executable as? Method)?.name}")
             val state = ExpandableState()
             composing.addLast(state)
             try {
@@ -66,13 +85,13 @@ object QsTileGlass {
         }
         hooks += HookEnv.findClass(EXPANDABLE_CONTROLLER_KT).hookMatchingAfter(Regex("rememberExpandableController.*")) { _, result ->
             // TEMP DEBUG
-            HookEnv.log("ONEUI_DEBUG QsTileGlass: rememberExpandableController hook FIRED, result=${result != null}, composingDepth=${composing.size}")
+            dbg("QsTileGlass: rememberExpandableController hook FIRED, result=${result != null}, composingDepth=${composing.size}")
             composing.lastOrNull()?.let { it.controller = result }
         }
 
         hooks += HookEnv.findClass(TILE_DEFAULTS).hookAllAfter("getColorForState") { chain, result ->
             // TEMP DEBUG
-            HookEnv.log("ONEUI_DEBUG QsTileGlass: getColorForState hook FIRED")
+            dbg("QsTileGlass: getColorForState hook FIRED")
             captureRecomposeScope(chain.executable as Method, chain.args)
             if (GlassConfig.tilesActive) applyGlassTileAlpha(chain.args.firstOrNull(), result)
         }
@@ -85,7 +104,7 @@ object QsTileGlass {
         // no Compose reflection needed at all.
         for (legacyClass in listOf("LargeTileView", "NoLabelTileView", "LabelTileView")) {
             hooks += HookEnv.findClass("${SystemUiModule.PACKAGE}.qs.tileimpl.$legacyClass").hookAllAfter("updateColoredBackground") { chain, _ ->
-                HookEnv.log("ONEUI_DEBUG QsTileGlass: $legacyClass.updateColoredBackground FIRED")
+                dbg("QsTileGlass: $legacyClass.updateColoredBackground FIRED")
                 (chain.thisObject as? android.view.View)?.setBackgroundColor(Color.MAGENTA)
             }
         }
@@ -106,10 +125,10 @@ object QsTileGlass {
         for (barClass in listOf("LargeTileBar", "TopLargeTileBar", "BottomLargeTileBar", "SmartViewLargeTileBar")) {
             val cls = HookEnv.findClass("${SystemUiModule.PACKAGE}.qs.bar.$barClass")
             hooks += cls.hookAllBefore("inflateViews") { chain ->
-                HookEnv.log("ONEUI_DEBUG QsTileGlass: $barClass.inflateViews ENTER at ${System.currentTimeMillis()}, class=${chain.thisObject?.javaClass?.name}")
+                dbg("QsTileGlass: $barClass.inflateViews ENTER at ${System.currentTimeMillis()}, class=${chain.thisObject?.javaClass?.name}")
             }
             hooks += cls.hookAllAfter("inflateViews") { chain, _ ->
-                HookEnv.log("ONEUI_DEBUG QsTileGlass: $barClass.inflateViews EXIT at ${System.currentTimeMillis()}")
+                dbg("QsTileGlass: $barClass.inflateViews EXIT at ${System.currentTimeMillis()}")
             }
         }
 
@@ -181,7 +200,7 @@ object QsTileGlass {
     private fun drawSamsungQuickTile(drawScope: Any, shape: Any) {
         // TEMP DEBUG — first test of this hook target, same unconditional-signal approach
         // as every previous first attempt in this investigation (see QS_TILE_INVESTIGATION.md).
-        HookEnv.log("ONEUI_DEBUG QsTileGlass: samsung QuickTile drawn CALLED, tilesActive=${GlassConfig.tilesActive}")
+        dbg("QsTileGlass: samsung QuickTile drawn CALLED, tilesActive=${GlassConfig.tilesActive}")
         ComposeToolkit.nativeCanvas(drawScope)?.drawColor(Color.MAGENTA)
         // END TEMP DEBUG
 
@@ -194,21 +213,21 @@ object QsTileGlass {
                 Color.TRANSPARENT,
                 GlassConfig.surface(PrefKeys.TILES).style
             )
-            HookEnv.log("ONEUI_DEBUG QsTileGlass: samsung QuickTile ComposeLiquidGlass.draw() returned without throwing")
+            dbg("QsTileGlass: samsung QuickTile ComposeLiquidGlass.draw() returned without throwing")
         }
     }
 
     private fun drawTileGlass(drawScope: Any, shape: Any, state: ExpandableState) {
         // TEMP DEBUG — remove after diagnosing why QS tiles render stock on One UI 8.5.
-        HookEnv.log("ONEUI_DEBUG QsTileGlass.drawTileGlass CALLED, tilesActive=${GlassConfig.tilesActive}")
+        dbg("QsTileGlass.drawTileGlass CALLED, tilesActive=${GlassConfig.tilesActive}")
         ComposeToolkit.nativeCanvas(drawScope)?.drawColor(Color.MAGENTA)
         // END TEMP DEBUG — unconditional, runs even if the checks below would normally return.
 
         if (!GlassConfig.tilesActive || ExpandableTransitions.isTransitioning(state.controller)) {
-            HookEnv.log("ONEUI_DEBUG QsTileGlass gated off: tilesActive=${GlassConfig.tilesActive} transitioning=${ExpandableTransitions.isTransitioning(state.controller)}")
+            dbg("QsTileGlass gated off: tilesActive=${GlassConfig.tilesActive} transitioning=${ExpandableTransitions.isTransitioning(state.controller)}")
             return
         }
-        HookEnv.log("ONEUI_DEBUG QsTileGlass past gate, entering Guard.run")
+        dbg("QsTileGlass past gate, entering Guard.run")
         Guard.run("QsTileGlass.tile_glass", Unit) {
             ComposeLiquidGlass.draw(
                 drawScope,
@@ -217,7 +236,7 @@ object QsTileGlass {
                 Color.TRANSPARENT,
                 GlassConfig.surface(PrefKeys.TILES).style
             )
-            HookEnv.log("ONEUI_DEBUG QsTileGlass.draw() returned without throwing")
+            dbg("QsTileGlass.draw() returned without throwing")
         }
     }
 
